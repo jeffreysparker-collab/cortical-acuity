@@ -2,7 +2,7 @@
   "name": "Landolt C · Cortical Magnification",
   "short_name": "Landolt C",
   "description": "Pointer & Hess (1989) replication — measures Schwartz cortical magnification parameters k₁ and k₂ from Landolt C acuity thresholds.",
-  "start_url": "/",
+  "start_url": "/cortical-acuity/",
   "display": "standalone",
   "orientation": "landscape",
   "background_color": "#f0ede8",
