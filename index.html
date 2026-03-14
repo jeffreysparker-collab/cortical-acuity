@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Landolt C">
+<meta name="theme-color" content="#f0ede8">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Landolt C · Cortical Magnification</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#f0ede8; --surf:#f8f6f2; --ink:#1a1a1a; --faint:rgba(0,0,0,0.08); --mid:#999;
+  --green:#2a7a4f; --red:#c0392b; --orange:#e67e22; --blue:#534AB7;
+  --font:Georgia,'Times New Roman',serif; --mono:'Courier New',Courier,monospace
+}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--ink);
+  font-family:var(--font);overflow:hidden;touch-action:none}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;overflow-y:auto;
+  padding:max(env(safe-area-inset-top,12px),12px)
+          max(env(safe-area-inset-right,12px),16px)
+          max(env(safe-area-inset-bottom,12px),12px)
+          max(env(safe-area-inset-left,12px),16px)}
+.screen.on{display:flex}
+#setup{gap:12px;max-width:560px;margin:0 auto;width:100%}
+.ey{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--mid)}
+h1{font-size:clamp(18px,4vw,24px);font-weight:400;letter-spacing:-.5px}
+.bt{font-size:13px;color:#666;line-height:1.65}
+.wb{background:#fff8e6;border:.5px solid #e8c040;border-radius:8px;
+    padding:10px 14px;font-size:13px;color:#7a5500;line-height:1.6}
+.rw{display:flex;align-items:center;gap:12px}
+label{font-size:12px;color:#888;display:block;margin-bottom:4px}
+input[type=range]{flex:1;accent-color:var(--ink)}
+.mv{font-family:var(--mono);font-size:13px;min-width:44px;text-align:right}
+input[type=number]{width:80px;padding:6px 8px;border:.5px solid #ccc;
+    border-radius:6px;font-family:var(--mono);font-size:13px;background:#fff}
+select{padding:7px 10px;border:.5px solid #ccc;border-radius:6px;
+    font-family:var(--font);font-size:13px;background:#fff;color:var(--ink);
+    -webkit-appearance:none;width:100%}
+.gb{background:var(--surf);border-radius:8px;padding:12px 14px;
+    font-family:var(--mono);font-size:12px;line-height:1.9;color:#555}
+.gl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mid);margin-bottom:2px}
+.gw{color:#b06020;font-size:11px}
+.pb{width:100%;padding:13px;background:var(--ink);color:#fff;border:none;
+    border-radius:8px;font-family:var(--font);font-size:15px;cursor:pointer;margin-top:2px}
+.pb:active{opacity:.85}
+#trial{padding:8px 12px;
+  padding-top:max(env(safe-area-inset-top,8px),8px);
+  padding-bottom:max(env(safe-area-inset-bottom,8px),8px)}
+.pr{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+    color:var(--mid);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.pt{height:2px;background:#e0ddd8;border-radius:1px;margin-bottom:8px}
+.pf{height:100%;border-radius:1px;background:var(--ink);transition:width .4s}
+#area{position:relative;flex:1;background:var(--bg);border-radius:10px;
+    border:.5px solid var(--faint);margin-bottom:8px;min-height:0}
+#fix{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:28px;height:28px;pointer-events:none;z-index:10}
+#fh{position:absolute;top:50%;left:0;right:0;height:2px;background:var(--ink);
+    transform:translateY(-50%);transition:background .12s}
+#fv{position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--ink);
+    transform:translateX(-50%);transition:background .12s}
+#fg{position:absolute;top:50%;left:50%;width:7px;height:7px;border-radius:50%;
+    background:var(--bg);transform:translate(-50%,-50%)}
+#sc{position:absolute;transform:translate(-50%,-50%);visibility:hidden;z-index:5;
+    box-shadow:0 0 0 1px rgba(0,0,0,.05)}
+#st{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    font-family:var(--mono);font-size:12px;color:rgba(0,0,0,.22);
+    letter-spacing:1.5px;pointer-events:none;white-space:nowrap}
+#rpad{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.br{display:flex;align-items:center}
+.ab{background:rgba(255,255,255,.5);border:.5px solid rgba(0,0,0,.15);border-radius:10px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    user-select:none;-webkit-user-select:none;touch-action:manipulation;transition:background .1s}
+.ab:active{background:rgba(0,0,0,.08)}
+.bc{display:flex;align-items:center;justify-content:center}
+.bd{width:8px;height:8px;border-radius:50%;background:#ccc}
+#dbg{font-family:var(--mono);font-size:9px;color:#ccc;display:flex;
+    justify-content:space-between;border-top:.5px solid #e8e4de;padding-top:5px;margin-top:4px;flex-shrink:0}
+#results{gap:12px;max-width:560px;margin:0 auto;width:100%}
+.sg{display:grid;gap:8px}
+.sc2{background:var(--surf);border:.5px solid var(--faint);border-radius:8px;padding:10px 12px;text-align:center}
+.sc2.ac{background:#eeeae4}
+.sc2.wn{border-color:#e8b4b4}
+.sl{font-size:10px;color:var(--mid);margin-bottom:3px;line-height:1.3}
+.sv{font-family:var(--mono);font-weight:700;letter-spacing:-.5px}
+.ss{font-size:10px;color:#bbb;margin-top:3px}
+.sv.wn,.ss.wn{color:var(--red)}
+.sv.lg{font-size:20px}
+.sv.md{font-size:15px}
+.cb{background:var(--surf);border:.5px solid var(--faint);border-radius:8px;padding:12px}
+.cl{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mid);margin-bottom:8px}
+canvas.ch{width:100%;display:block}
+.mn{font-size:11px;color:#999;line-height:1.8;border-left:2px solid #e0ddd8;padding-left:12px}
+.mn strong{color:#666}
+</style>
+</head>
+<body>
+
+<!-- ══ SETUP ══ -->
+<div id="setup" class="screen on">
+  <div class="ey">Cortical Magnification · Psychophysics</div>
+  <h1>Acuity staircase</h1>
+  <div id="owarn" class="wb" style="display:none">
+    &#8635; <strong>Rotate to landscape</strong> — portrait fits ~6° max; landscape ~13°.
+  </div>
+  <p class="bt">
+    A stimulus flashes left or right of a fixation cross.
+    <strong>Lock eyes on the cross</strong> — do not look at the stimulus.
+    Brace the phone against a surface. The cross turns orange on stray touches.
+  </p>
+  <div>
+    <label>Stimulus mode</label>
+    <select id="selmode">
+      <option value="landolt">Landolt C — gap acuity (4AFC ↑→↓←)</option>
+      <option value="tumbling-e">Tumbling E — gap acuity (4AFC ↑→↓←)</option>
+      <option value="gabor">Gabor patch — tilt discrimination (2AFC ↖↗)</option>
+      <option value="glass">Glass patterns — spiral coherence (2AFC ↺↻)</option>
+    </select>
+  </div>
+  <div>
+    <label>Viewing distance (cm)</label>
+    <div class="rw">
+      <input type="range" id="sld" min="20" max="100" value="35">
+      <span class="mv" id="ld">35</span>
+    </div>
+  </div>
+  <div>
+    <label>Screen physical width (cm)</label>
+    <div class="rw">
+      <input type="range" id="slw" min="6" max="60" value="14">
+      <span class="mv" id="lw">14</span>
+    </div>
+  </div>
+  <div>
+    <label>Screen pixel width</label>
+    <div class="rw">
+      <input type="number" id="inpx" value="390">
+      <span style="font-size:11px;color:#bbb;margin-left:6px" id="lauto"></span>
+    </div>
+  </div>
+  <div class="gb">
+    <div class="gl">Geometry</div>
+    <div id="gppd"></div>
+    <div id="geccs"></div>
+    <div id="gwarn" class="gw"></div>
+  </div>
+  <button class="pb" id="bbeg">Begin</button>
+</div>
+
+<!-- ══ TRIAL ══ -->
+<div id="trial" class="screen">
+  <div class="pr"><span id="plbl">PRACTICE</span><span id="pcnt">0/0</span></div>
+  <div class="pt"><div class="pf" id="pfill" style="width:0%"></div></div>
+  <div id="area">
+    <div id="fix"><div id="fh"></div><div id="fv"></div><div id="fg"></div></div>
+    <canvas id="sc"></canvas>
+    <div id="st"></div>
+  </div>
+  <div id="rpad">
+    <div class="br"><button class="ab" id="bup"    data-dir="0">&#8593;</button></div>
+    <div class="br" id="mrow">
+      <button class="ab" id="bleft"  data-dir="3">&#8592;</button>
+      <div class="bc"><div class="bd"></div></div>
+      <button class="ab" id="bright" data-dir="1">&#8594;</button>
+    </div>
+    <div class="br"><button class="ab" id="bdown"  data-dir="2">&#8595;</button></div>
+  </div>
+  <div id="dbg">
+    <span id="ds">-</span><span id="dd">-</span>
+    <span id="df">-</span><span id="dp">-</span>
+  </div>
+</div>
+
+<!-- ══ RESULTS ══ -->
+<div id="results" class="screen">
+  <div class="ey">Results</div>
+  <h1>Schwartz map parameters</h1>
+  <p class="bt" id="res-mode" style="margin-bottom:8px;font-style:italic;color:#888"></p>
+  <div class="sg" id="pgrid" style="grid-template-columns:1fr 1fr 1fr"></div>
+  <div class="sg" id="tgrid"></div>
+  <div class="cb">
+    <div class="cl">Threshold vs eccentricity</div>
+    <canvas id="cchart" class="ch" height="220"></canvas>
+  </div>
+  <div class="cb">
+    <div class="cl">Staircase traces</div>
+    <canvas id="tchart" class="ch" height="160"></canvas>
+  </div>
+  <p class="mn">
+    <strong>Method:</strong>
+    Pointer &amp; Hess (1989) replication. Horizontal meridian only.
+    Landolt C / Tumbling E: true 4AFC, gap/tine direction random and independent of position.
+    Gabor: 2AFC tilt discrimination (±45°), full contrast.
+    Glass patterns: 2AFC CW vs CCW spiral, coherence staircase (V2/V4 integration).
+    Dipole separation scales with eccentricity using personal k₂ from Landolt (or population k₂=1.5° as fallback).
+    2-up/1-down staircase → ~70.7% threshold. Stim 200ms to limit microsaccades.
+    Threshold = mean of last 8 reversal points.
+    Schwartz / E₂ parameters from robust Huber linear regression of T(e) = (e+k₂)/k₁.
+    Dashed = P&amp;H population reference (k₁≈25, k₂≈1.5°).
+  </p>
+  <button class="pb" id="bexp" style="margin-bottom:10px">⬇ Export trial data (CSV)</button>
+  <button class="pb" id="bres" style="margin-bottom:16px;background:transparent;color:var(--ink);border-color:rgba(0,0,0,0.2)">Run again</button>
+</div>
+
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+</script>
+</body>
+</html>
