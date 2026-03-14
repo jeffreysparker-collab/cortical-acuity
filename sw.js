@@ -1,7 +1,13 @@
 // Network-first, cache fallback — updates reach users on next load
 const CACHE = 'landolt-v2';
-const ASSETS = ['/', '/index.html', '/app.js', '/manifest.json',
-                 '/icons/icon-192.png', '/icons/icon-512.png'];
+const ASSETS = [
+  '/cortical-acuity/',
+  '/cortical-acuity/index.html',
+  '/cortical-acuity/app.js',
+  '/cortical-acuity/manifest.json',
+  '/cortical-acuity/icons/icon-192.png',
+  '/cortical-acuity/icons/icon-512.png',
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
