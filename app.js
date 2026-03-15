@@ -1,81 +1,100 @@
 'use strict';
 var STIM=200,MASK=200,ITI=500,NP=12,NB=10,NS=40;
-var ALL_ECCS=[2,4,6,8,10,16],GDIRS=[0,1,2,3],HPOS=[0,180],TILTS=[0,1];
-var PPD=37,ACT=[2,4,6],MODE='landolt',eng=null;
+var ALL_ECCS=[1,2,4,6,8,10,12,14,16],GDIRS=[0,1,2,3],HPOS=[0,180],TILTS=[0,1];
+var PPD=37,ACT=[1,2,4],MODE='landolt',eng=null;
 function popThresh(e){return 0.040*e+0.06;}
 function startSize(e){
-  if(MODE==='glass') return 0.50;   // start at 50% coherence — easily visible
+  if(MODE==='glass') return 0.50;
   return Math.max(1.0,popThresh(e)*8);
 }
 function floorSize(ppd){
-  if(MODE==='glass') return 0.02;   // coherence floor: 2%
+  if(MODE==='glass') return 0.02;
   return Math.max(5/ppd,0.003);
 }
-// Glass uses log-based step: start at 0.25, halve every 4 reversals
-// This concentrates trials in the 0.05–0.15 sensitive range
 function glassStartStep(){ return 0.25; }
 function pick(a){return a[Math.floor(Math.random()*a.length)];}
 function calcPPD(){return(+document.getElementById('inpx').value/+document.getElementById('slw').value)*(+document.getElementById('sld').value*Math.PI/180);}
-function calcActive(ppd){var h=window.innerWidth/2;var u=ALL_ECCS.filter(function(e){return e*ppd+Math.max(24,popThresh(e)*5*ppd*0.5)+10<h;});return u.length>=3?u:ALL_ECCS.slice(0,3);}
+
+// calcActive: measure the actual rendered stimulus area width rather than
+// window.innerWidth, which is unreliable on iOS (includes chrome, changes
+// with keyboard, wrong in PWA mode). Falls back to innerWidth if area not
+// yet in DOM. C must fit entirely on screen: ecc + half-C-width + margin < half-area-width.
+function calcActive(ppd){
+  var areaEl = document.getElementById('area');
+  var areaW  = areaEl ? areaEl.getBoundingClientRect().width : 0;
+  // fall back to innerWidth minus padding if area not laid out yet
+  if(areaW < 10) areaW = window.innerWidth - 32;
+  var half = areaW / 2;
+  var u = ALL_ECCS.filter(function(e){
+    var eccPx   = e * ppd;
+    // C radius at starting size — must not clip edge
+    var cHalf   = Math.max(24, popThresh(e) * 5 * ppd * 0.5);
+    return eccPx + cHalf + 8 < half;
+  });
+  // require at least 3 eccentricities for a meaningful curve fit
+  return u.length >= 3 ? u : ALL_ECCS.slice(0, 3);
+}
+// ── BACKGROUND COLOUR ────────────────────────────────────────────
+// #area background is white (#ffffff).
+// All stimuli use white bg so there is no visible canvas border.
+// Gabor: mid-grey #808080 fills the circular aperture, fading to white
+//   at edges via the Gaussian — no hard border.
+// Glass: white field, white dots → high contrast black dots on white.
+// C / E: white field, black ink.
+var BG = '#ffffff';   // must match #area background in CSS
+
 function drawC(canvas,sizeDeg,gi){
-  var dpr=window.devicePixelRatio||1,sp=sizeDeg*PPD,sw=Math.max(0.5,sp/5),R=Math.max(sw*2,sp*0.45);
+  var dpr=window.devicePixelRatio||1,sp=sizeDeg*PPD;
+  var sw=Math.max(0.5,sp/5),R=Math.max(sw*2,sp*0.45);
   var ld=Math.max(12,Math.ceil(R*2+sw*2+6)),SC=4,od=ld*SC,off=document.createElement('canvas');
-  off.width=off.height=od;var o=off.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,od,od);
+  off.width=off.height=od;var o=off.getContext('2d');
+  o.fillStyle=BG;o.fillRect(0,0,od,od);
   var cx=od/2,cy=od/2,swS=sw*SC,RS=R*SC,gh=swS/2,ga=[-(Math.PI/2),0,Math.PI/2,Math.PI][gi];
-  o.strokeStyle='#000';o.lineWidth=swS;o.lineCap='butt';o.beginPath();o.arc(cx,cy,RS,ga+gh/RS,ga+Math.PI*2-gh/RS);o.stroke();
-  canvas.width=ld*dpr;canvas.height=ld*dpr;canvas.style.width=ld+'px';canvas.style.height=ld+'px';
-  var ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(off,0,0,canvas.width,canvas.height);
+  o.strokeStyle='#000';o.lineWidth=swS;o.lineCap='butt';
+  o.beginPath();o.arc(cx,cy,RS,ga+gh/RS,ga+Math.PI*2-gh/RS);o.stroke();
+  canvas.width=ld*dpr;canvas.height=ld*dpr;
+  canvas.style.width=ld+'px';canvas.style.height=ld+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.drawImage(off,0,0,canvas.width,canvas.height);
 }
 
-// Tumbling E — same 4AFC as Landolt C (0=up 1=right 2=down 3=left = direction tines point)
-// ISO 8596 proportions: overall height H, stroke width = H/5, gap = H/5
-// Three horizontal bars with two gaps, rotated to face the correct direction.
-// Drawn at 4× then downscaled — same antialiasing trick as drawC.
+// Tumbling E — ISO 8596: height H, stroke=gap=H/5, width=H
+// No minimum canvas floor — staircase floor controls minimum size.
+// 4× supersampled then downscaled, same as drawC.
 function drawE(canvas, sizeDeg, gi) {
   var dpr = window.devicePixelRatio || 1;
-  var H   = Math.max(12, sizeDeg * PPD);   // overall height in logical px
-  // ISO proportions: stroke = H/5, gap = H/5, width = H (square bounding box)
-  var sw  = Math.max(0.5, H / 5);         // stroke width
-  var W   = H;                             // overall width = height (square)
-  var pad = sw;
-  var dim = Math.ceil(W + pad * 2);        // canvas logical size with padding
+  var H   = sizeDeg * PPD;            // overall height in logical px, no floor here
+  H       = Math.max(4, H);           // absolute minimum: 4px so canvas is valid
+  var sw  = Math.max(0.3, H / 5);    // stroke width = H/5
+  var W   = H;
+  var pad = sw * 0.5;
+  var dim = Math.ceil(W + pad * 2);
 
-  var SC  = 4, od = dim * SC;
+  var SC = 4, od = dim * SC;
   var off = document.createElement('canvas');
   off.width = off.height = od;
   var o = off.getContext('2d');
-  o.fillStyle = '#fff';
+  o.fillStyle = BG;
   o.fillRect(0, 0, od, od);
 
-  // Draw E pointing RIGHT (tines → right) then rotate
-  // Origin at centre of canvas
   o.save();
   o.translate(od / 2, od / 2);
-
-  // Rotation: pointing right = 0°, down = 90°, left = 180°, up = 270°
-  // gi: 0=up 1=right 2=down 3=left
+  // gi: 0=up 1=right 2=down 3=left  (direction tines point)
   var rotMap = [Math.PI * 1.5, 0, Math.PI * 0.5, Math.PI];
   o.rotate(rotMap[gi]);
 
-  var s = SC;   // scale factor
-  var hs = (H / 2) * s;   // half-height scaled
-  var ws = (W / 2) * s;   // half-width scaled
-  var sws = sw * s;        // stroke width scaled
+  var hs  = (H / 2) * SC;
+  var ws  = (W / 2) * SC;
+  var sws = sw * SC;
 
   o.fillStyle = '#000';
-  o.strokeStyle = '#000';
-  o.lineWidth = 0;
-
-  // E pointing right: spine on left, three bars pointing right
-  // Spine: vertical bar, full height
+  // Spine: left vertical bar, full height
   o.fillRect(-ws, -hs, sws, hs * 2);
-
-  // Three bars (top, middle, bottom) pointing right
-  // Top bar: from spine to right edge, at top
-  o.fillRect(-ws, -hs,           ws * 2, sws);   // top
-  o.fillRect(-ws, -sws / 2,      ws * 2, sws);   // middle
-  o.fillRect(-ws,  hs - sws,     ws * 2, sws);   // bottom
-
+  // Three horizontal bars pointing right from spine
+  o.fillRect(-ws, -hs,        ws * 2, sws);   // top
+  o.fillRect(-ws, -sws / 2,   ws * 2, sws);   // middle
+  o.fillRect(-ws,  hs - sws,  ws * 2, sws);   // bottom
   o.restore();
 
   canvas.width  = dim * dpr;
@@ -87,45 +106,73 @@ function drawE(canvas, sizeDeg, gi) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
 }
-function drawGabor(canvas,sizeDeg,tiltIdx,contrast){
-  contrast=contrast===undefined?1.0:contrast;
-  var dpr=window.devicePixelRatio||1,dp=Math.max(32,Math.round(sizeDeg*PPD));
-  if(dp%2===0)dp+=1;
-  canvas.width=dp*dpr;canvas.height=dp*dpr;canvas.style.width=dp+'px';canvas.style.height=dp+'px';
-  var ctx=canvas.getContext('2d'),imgd=ctx.createImageData(canvas.width,canvas.height),data=imgd.data;
-  var W=canvas.width,H=canvas.height,sigma=W/6,cpx=(3*Math.PI*2)/W,angle=tiltIdx===0?-Math.PI/4:Math.PI/4;
-  for(var y=0;y<H;y++){for(var x=0;x<W;x++){
-    var dx=x-W/2,dy=y-H/2,xth=dx*Math.cos(angle)+dy*Math.sin(angle);
-    var grating=Math.sin(xth*cpx),gaussian=Math.exp(-(dx*dx+dy*dy)/(2*sigma*sigma));
-    var val=Math.round(128+127*grating*gaussian*contrast);val=Math.max(0,Math.min(255,val));
-    var idx=(y*W+x)*4;data[idx]=data[idx+1]=data[idx+2]=val;data[idx+3]=255;
-  }}
-  ctx.putImageData(imgd,0,0);
+
+// Gabor: drawn in logical pixels throughout, scaled by dpr at the end.
+// Background is BG (white), circular Gabor patch drawn over it.
+// Gaussian envelope fades to 0 at edges → patch blends into white field.
+// sizeDeg controls the patch diameter directly so small sizes work at 1°.
+function drawGabor(canvas, sizeDeg, tiltIdx, contrast) {
+  contrast = contrast === undefined ? 1.0 : contrast;
+  var dpr    = window.devicePixelRatio || 1;
+  var dp     = Math.max(16, Math.round(sizeDeg * PPD));  // logical px diameter
+  if (dp % 2 === 0) dp++;
+
+  // Draw at logical resolution then upscale — consistent with C/E pipeline
+  var off    = document.createElement('canvas');
+  off.width  = off.height = dp;
+  var o      = off.getContext('2d');
+  var imgd   = o.createImageData(dp, dp);
+  var data   = imgd.data;
+  var sigma  = dp / 6;
+  // spatial frequency: 3 cycles across the patch diameter
+  var sf     = (2 * Math.PI * 3) / dp;
+  var angle  = tiltIdx === 0 ? -Math.PI / 4 : Math.PI / 4;
+
+  // Parse BG (#ffffff) → mid-grey baseline is 128 on top of white bg
+  for (var y = 0; y < dp; y++) {
+    for (var x = 0; x < dp; x++) {
+      var dx = x - dp/2, dy = y - dp/2;
+      var xth = dx * Math.cos(angle) + dy * Math.sin(angle);
+      var gaus = Math.exp(-(dx*dx + dy*dy) / (2 * sigma * sigma));
+      // Grating oscillates around mid-grey 128; envelope fades to 0
+      // so at edges val → 128 (mid-grey) which blends into white via
+      // the alpha channel: we let alpha = gaus*255 and bg = white
+      var grating = Math.sin(xth * sf);
+      var val = Math.round(128 + 127 * grating * gaus * contrast);
+      val = Math.max(0, Math.min(255, val));
+      var i = (y * dp + x) * 4;
+      // Blend: gabor on white bg via alpha compositing
+      // gabor pixel at alpha=gaus: out = gaus*val + (1-gaus)*255
+      var alpha = gaus;
+      var blended = Math.round(alpha * val + (1 - alpha) * 255);
+      data[i] = data[i+1] = data[i+2] = blended;
+      data[i+3] = 255;
+    }
+  }
+  o.putImageData(imgd, 0, 0);
+
+  canvas.width  = dp * dpr;
+  canvas.height = dp * dpr;
+  canvas.style.width  = dp + 'px';
+  canvas.style.height = dp + 'px';
+  var ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
 }
 
-// Glass spiral pattern — 2AFC CW (dir=1) vs CCW (dir=-1)
+// Glass spiral — 2AFC CW (dir=1) vs CCW (dir=-1)
 // coherence: 0=pure noise, 1=fully coherent spiral
-// eccDeg:    eccentricity in degrees — drives all scaling
-// k2hint:    personal k2 from Landolt session, or population 1.5°
-//
-// Design principles implemented:
-//  1. M-scaling: patch diameter = patchBaseDeg * (1 + eccDeg/k2)
-//     so cortical footprint is constant across eccentricities
-//  2. Dipole length scales same way as patch — matches V2 RF size
-//  3. Dot radius < 0.5 * dipoleLength always — prevents overlap/blob
-//  4. Fixed dot DENSITY (dots per deg²) — patch grows, dots added proportionally
-//     so neural SNR stays constant and true E2 is measured
+// White background, black dots — no visible patch border.
+// Strict M-scaling, fixed dot density, dot radius < 0.5 × dipole.
 function drawGlass(canvas, coherence, dir, eccDeg, k2hint) {
-  var k2  = k2hint || 1.5;
+  var k2  = (k2hint && k2hint > 0.05 && k2hint < 8) ? k2hint : 1.5;
   var dpr = window.devicePixelRatio || 1;
 
-  // ── 1. Patch size: strict M-scaling ──────────────────────────────
-  // At ecc=0: patchBaseDeg. At ecc=k2: 2× base. At ecc=10, k2=1.5: 7.67× base.
-  // Base chosen so foveal patch is ~1.5° (clearly visible but not huge)
   var patchBaseDeg = 1.5;
   var patchDeg     = patchBaseDeg * (1 + eccDeg / k2);
   var patchPx      = Math.max(40, Math.round(patchDeg * PPD));
-  if (patchPx % 2 === 0) patchPx++;  // odd dimension → clean centre
+  if (patchPx % 2 === 0) patchPx++;
 
   canvas.width  = patchPx * dpr;
   canvas.height = patchPx * dpr;
@@ -134,59 +181,47 @@ function drawGlass(canvas, coherence, dir, eccDeg, k2hint) {
 
   var ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  ctx.fillStyle = '#808080';
+
+  // White background — no border when placed on white area
+  ctx.fillStyle = BG;
   ctx.fillRect(0, 0, patchPx, patchPx);
 
-  // ── 2. Dipole length: same M-scaling as patch ─────────────────────
-  // baseDipole in pixels at fovea — ~4% of base patch
-  var baseDipolePx  = Math.max(4, patchBaseDeg * PPD * 0.04);
-  var dipolePx      = baseDipolePx * (1 + eccDeg / k2);
-  // cap at 20% of patch so dipoles don't span the whole stimulus
-  dipolePx = Math.min(dipolePx, patchPx * 0.20);
+  var baseDipolePx = Math.max(4, patchBaseDeg * PPD * 0.04);
+  var dipolePx     = Math.min(baseDipolePx * (1 + eccDeg / k2), patchPx * 0.20);
+  var dotR         = Math.max(1.0, dipolePx * 0.35);
 
-  // ── 3. Dot radius: strictly < 0.5 × dipole to prevent blob ────────
-  // Use 0.35× as comfortable margin
-  var dotR = Math.max(1.0, dipolePx * 0.35);
-
-  // ── 4. Fixed dot density: DENSITY_PER_DEG2 pairs per deg² ─────────
-  // This keeps neural SNR constant — more dots in bigger peripheral patch
-  var DENSITY_PER_DEG2 = 60;   // pairs per square degree of patch area
-  var patchAreaDeg2    = Math.PI * (patchDeg/2) * (patchDeg/2);
-  var numPairs         = Math.round(DENSITY_PER_DEG2 * patchAreaDeg2);
-  numPairs = Math.max(80, Math.min(numPairs, 800));  // sanity clamp
+  var DENSITY   = 60;
+  var areaD2    = Math.PI * (patchDeg/2) * (patchDeg/2);
+  var numPairs  = Math.max(80, Math.min(Math.round(DENSITY * areaD2), 800));
 
   var cx = patchPx / 2, cy = patchPx / 2;
   var apertureR = patchPx / 2 - 1;
 
-  // Clip to circular aperture
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, apertureR, 0, Math.PI * 2);
   ctx.clip();
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#000000';   // black dots on white bg — max contrast
 
   for (var i = 0; i < numPairs; i++) {
-    // Place dot 1 uniformly within circle (rejection sampling)
-    var x1, y1, dx, dy, distFromCentre;
-    var attempts = 0;
+    var x1, y1, dx, dy, dist2c, attempts = 0;
     do {
       x1 = Math.random() * patchPx;
       y1 = Math.random() * patchPx;
       dx = x1 - cx; dy = y1 - cy;
-      distFromCentre = Math.sqrt(dx*dx + dy*dy);
+      dist2c = Math.sqrt(dx*dx + dy*dy);
       attempts++;
-    } while (distFromCentre > apertureR - dotR && attempts < 10);
+    } while (dist2c > apertureR - dotR && attempts < 12);
 
     var x2, y2;
     if (Math.random() < coherence) {
-      // Signal dipole: tangential (rotational) direction, CW or CCW
-      var norm = distFromCentre || 0.001;
-      var tx   = (-dy / norm) * dir;
-      var ty   = ( dx / norm) * dir;
+      // Signal: tangential dipole — rotational direction CW or CCW
+      var norm = dist2c || 0.001;
+      var tx = (-dy / norm) * dir;
+      var ty = ( dx / norm) * dir;
       x2 = x1 + tx * dipolePx;
       y2 = y1 + ty * dipolePx;
     } else {
-      // Noise dipole: random direction
       var ra = Math.random() * Math.PI * 2;
       x2 = x1 + Math.cos(ra) * dipolePx;
       y2 = y1 + Math.sin(ra) * dipolePx;
@@ -370,7 +405,28 @@ function runAll(eccIdx){
 }
 function hist_push(rec){eng.allH.push(rec);}
 function runPractice(){var trial=0;function next(){if(trial>=NP){runAll(0);return;}setProgress(trial,NP+ACT.length*(NB+NS),'practice');setDebug(popThresh(4)*3,4);flashTrial(popThresh(4)*3,4,function(ok){var rec={phase:'practice',trialN:eng.trialN++,timestamp:new Date().toISOString(),task:MODE,ecc:4,posAngle:eng.pos,sizeDeg:popThresh(4)*3,target:eng.gd,response:eng.lastResp,correct:ok,rt_ms:eng.lastRT,ppd:Math.round(PPD*100)/100,dist_cm:+document.getElementById('sld').value,screenW_cm:+document.getElementById('slw').value,screenPx:+document.getElementById('inpx').value};hist_push(rec);trial++;next();});} next();}
-function startTask(){PPD=calcPPD();ACT=calcActive(PPD);MODE=document.getElementById('selmode').value;getEls();var sid=Date.now().toString(36).toUpperCase();var prevK2=eng?eng.landoltK2:null;eng={history:ACT.map(function(){return[];}),allH:[],thresholds:new Array(ACT.length).fill(null),sessionId:sid,sessionStart:new Date().toISOString(),trialN:0,gd:1,pos:0,stimOn:null,lastRT:null,lastResp:null,acc:false,onR:null,t1:null,t2:null,t3:null,landoltK2:prevK2};sizeBtns();updateButtons(MODE);showScreen('trial');setTimeout(runPractice,300);}
+function startTask(){
+  PPD=calcPPD();
+  MODE=document.getElementById('selmode').value;
+  getEls();
+  showScreen('trial');
+  sizeBtns();
+  updateButtons(MODE);
+  // Defer calcActive until after the trial screen has painted —
+  // getBoundingClientRect() on #area returns 0 until it is visible in the DOM.
+  // requestAnimationFrame fires after the browser has done its first layout pass.
+  requestAnimationFrame(function(){
+    ACT = calcActive(PPD);
+    var sid=Date.now().toString(36).toUpperCase();
+    var prevK2=eng?eng.landoltK2:null;
+    eng={history:ACT.map(function(){return[];}),allH:[],
+         thresholds:new Array(ACT.length).fill(null),
+         sessionId:sid,sessionStart:new Date().toISOString(),
+         trialN:0,gd:1,pos:0,stimOn:null,lastRT:null,lastResp:null,
+         acc:false,onR:null,t1:null,t2:null,t3:null,landoltK2:prevK2};
+    setTimeout(runPractice,250);
+  });
+}
 function storeK2IfLandolt(fitResult){if(MODE==='landolt'&&fitResult&&fitResult.k2){eng.landoltK2=fitResult.k2;}}
 function exportCSV(){
   var COLS=['session_id','session_start','trial_n','timestamp','task','phase',
@@ -476,8 +532,59 @@ function drawTraceChart(history){
   var byE={};history.forEach(function(h){if(!byE[h.ecc])byE[h.ecc]=[];byE[h.ecc].push(h);});
   var offset=0;ACT.forEach(function(ecc,pi){var pts=byE[ecc]||[];if(!pts.length)return;ctx.strokeStyle=pal[pi%pal.length];ctx.lineWidth=1.2;ctx.beginPath();pts.forEach(function(p,i){var x=pl+((offset+i)/total)*pw,y=pt+(1-Math.min(p.size,maxS)/maxS)*ph;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();pts.forEach(function(p,i){var x=pl+((offset+i)/total)*pw,y=pt+(1-Math.min(p.size,maxS)/maxS)*ph;ctx.fillStyle=p.correct?pal[pi%pal.length]:'transparent';ctx.strokeStyle=pal[pi%pal.length];ctx.lineWidth=.8;ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);p.correct?ctx.fill():ctx.stroke();});var lx=pl+((offset+pts.length/2)/total)*pw;ctx.fillStyle=pal[pi%pal.length];ctx.textAlign='center';ctx.fillText(ecc+'°',lx,pt+ph+22);offset+=pts.length;});
 }
-function updateGeo(){var ppd=calcPPD(),ac=calcActive(ppd);document.getElementById('ld').textContent=document.getElementById('sld').value;document.getElementById('lw').textContent=document.getElementById('slw').value;document.getElementById('gppd').textContent=ppd.toFixed(1)+' px/deg';document.getElementById('geccs').textContent='eccentricities: '+ac.map(function(e){return e+'°';}).join(' · ');var ex=ALL_ECCS.filter(function(e){return ac.indexOf(e)<0;});document.getElementById('gwarn').textContent=ex.length?ex.map(function(e){return e+'°';}).join(', ')+' excluded':'';}
-window.addEventListener('load',function(){document.getElementById('inpx').value=window.screen.width;document.getElementById('lauto').textContent='auto: '+window.screen.width+'px';var dpr=window.devicePixelRatio||1;document.getElementById('slw').value=Math.round(window.screen.width/dpr*0.026);document.getElementById('owarn').style.display=(window.innerHeight>window.innerWidth)?'block':'none';updateGeo();});
+function updateGeo(){
+  var ppd=calcPPD(),ac=calcActive(ppd);
+  document.getElementById('ld').textContent=document.getElementById('sld').value;
+  document.getElementById('lw').textContent=document.getElementById('slw').value;
+  document.getElementById('gppd').textContent=ppd.toFixed(1)+' px/deg';
+  document.getElementById('geccs').textContent='eccentricities: '+ac.map(function(e){return e+'°';}).join(' · ');
+  var ex=ALL_ECCS.filter(function(e){return ac.indexOf(e)<0;});
+  document.getElementById('gwarn').textContent=ex.length?ex.map(function(e){return e+'°';}).join(', ')+' excluded':'';
+  // also show pixel floor for reference
+  var fl=floorSize(ppd);
+  var flEl=document.getElementById('gfloor');
+  if(flEl) flEl.textContent='pixel floor: '+fl.toFixed(3)+'° ('+Math.round(fl*60*10)/10+' arcmin gap)';
+}
+window.addEventListener('load',function(){
+  var dpr  = window.devicePixelRatio || 1;
+  var sw   = window.screen.width;   // CSS logical pixels
+  var sh   = window.screen.height;
+
+  document.getElementById('inpx').value  = sw;
+  document.getElementById('lauto').textContent = 'auto: '+sw+'px';
+
+  // ── Physical screen width estimation ─────────────────────────────
+  // window.screen.width / dpr gives physical pixels, but pixel pitch
+  // varies enormously across devices (72–460 PPI) so the generic
+  // 0.026 cm/px heuristic (≈96 PPI) is wrong for phones.
+  // For known devices we use the manufacturer physical width directly.
+  // Fallback: heuristic, user should correct with a ruler.
+  var physW_cm = null;
+
+  // Detection by logical resolution + DPR combinations
+  // iPhone 16 Pro: 393×852 logical, DPR=3 → physical 71.5mm
+  if(sw===393 && sh===852 && dpr===3) physW_cm = 7.15;
+  // iPhone 16 Pro Max: 430×932 logical, DPR=3 → physical 77.6mm
+  else if(sw===430 && sh===932 && dpr===3) physW_cm = 7.76;
+  // iPhone 16 / 15: 390×844 logical, DPR=3 → physical 71.5mm
+  else if(sw===390 && sh===844 && dpr===3) physW_cm = 7.15;
+  // iPhone 16 Plus / 15 Plus: 430×932, DPR=3 → physical 77.8mm
+  else if(sw===430 && sh===932 && dpr===3) physW_cm = 7.78;
+  // iPhone SE 3rd gen: 375×667, DPR=2 → physical 58.6mm
+  else if(sw===375 && sh===667 && dpr===2) physW_cm = 5.86;
+  // iPad common sizes — DPR=2
+  else if(sw===768 && dpr===2)  physW_cm = 15.24;
+  else if(sw===1024 && dpr===2) physW_cm = 19.74;
+  // Fallback: generic heuristic (~96 PPI desktop standard)
+  else physW_cm = Math.round(sw / dpr * 0.026);
+
+  document.getElementById('slw').value = physW_cm;
+  document.getElementById('lw').textContent = physW_cm;
+
+  document.getElementById('owarn').style.display =
+    (window.innerHeight > window.innerWidth) ? 'block' : 'none';
+  updateGeo();
+});
 ['sld','slw','inpx'].forEach(function(id){document.getElementById(id).addEventListener('input',updateGeo);});
 document.getElementById('bbeg').addEventListener('click',startTask);
 document.getElementById('bres').addEventListener('click',function(){showScreen('setup');updateGeo();});
