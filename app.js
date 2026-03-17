@@ -43,20 +43,37 @@ function calcActive(ppd){
 // C / E: white field, black ink.
 var BG = '#ffffff';   // must match #area background in CSS
 
-function drawC(canvas,sizeDeg,gi){
-  var dpr=window.devicePixelRatio||1,sp=sizeDeg*PPD;
-  var sw=Math.max(0.5,sp/5),R=Math.max(sw*2,sp*0.45);
-  var ld=Math.max(12,Math.ceil(R*2+sw*2+6)),SC=4,od=ld*SC,off=document.createElement('canvas');
-  off.width=off.height=od;var o=off.getContext('2d');
-  o.fillStyle=BG;o.fillRect(0,0,od,od);
-  var cx=od/2,cy=od/2,swS=sw*SC,RS=R*SC,gh=swS/2,ga=[-(Math.PI/2),0,Math.PI/2,Math.PI][gi];
-  o.strokeStyle='#000';o.lineWidth=swS;o.lineCap='butt';
-  o.beginPath();o.arc(cx,cy,RS,ga+gh/RS,ga+Math.PI*2-gh/RS);o.stroke();
-  canvas.width=ld*dpr;canvas.height=ld*dpr;
-  canvas.style.width=ld+'px';canvas.style.height=ld+'px';
-  var ctx=canvas.getContext('2d');
-  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-  ctx.drawImage(off,0,0,canvas.width,canvas.height);
+function drawC(canvas, sizeDeg, gi) {
+  var dpr = window.devicePixelRatio || 1, sp = sizeDeg * PPD;
+  var sw = Math.max(0.5, sp / 5);
+  var R = Math.max(sw * 2, (sp - sw) / 2);
+  
+  var ld = Math.max(12, Math.ceil(sp + 8)), SC = 4, od = ld * SC;
+  var off = document.createElement('canvas');
+  off.width = off.height = od;
+  var o = off.getContext('2d');
+  o.fillStyle = BG;
+  o.fillRect(0, 0, od, od);
+
+  var cx = od / 2, cy = od / 2, swS = sw * SC, RS = R * SC;
+
+  o.strokeStyle = '#000'; o.lineWidth = swS;
+  o.beginPath(); o.arc(cx, cy, RS, 0, Math.PI * 2); o.stroke();
+
+  var angles = [1.5 * Math.PI, 0, 0.5 * Math.PI, Math.PI];
+  o.save();
+  o.translate(cx, cy);
+  o.rotate(angles[gi]);
+  o.fillStyle = BG;
+  o.fillRect(RS - swS / 2 - 1, -swS / 2, swS + 2, swS);
+  o.restore();
+
+  canvas.width = ld * dpr; canvas.height = ld * dpr;
+  canvas.style.width = ld + 'px'; canvas.style.height = ld + 'px';
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(off, 0, 0, ld, ld);
 }
 
 // Tumbling E — ISO 8596: height H, stroke=gap=H/5, width=H
