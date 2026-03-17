@@ -65,8 +65,7 @@ function drawC(canvas, sizeDeg, gi) {
   o.translate(cx, cy);
   o.rotate(angles[gi]);
   o.fillStyle = BG;
-  //o.fillRect(RS - swS / 2 - 1, -swS / 2, swS + 2, swS); //square incomplete mask
-  o.fillRect(0, -swS / 2, RS + swS / 2 + 1, swS); //rectangle complete mask
+  o.fillRect(0, -swS / 2, RS + swS / 2 + 1, swS); 
   o.restore();
 
   canvas.width = ld * dpr; canvas.height = ld * dpr;
