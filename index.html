@@ -116,13 +116,22 @@ canvas.ch{width:100%;display:block}
     <label>Stimulus mode</label>
     <select id="selmode">
       <option value="landolt">Landolt C — gap acuity (4AFC ↑→↓←)</option>
+      <option value="landolt-red-white">Landolt C — red on white (4AFC ↑→↓←)</option>
+      <option value="landolt-red-black">Landolt C — red on black (4AFC ↑→↓←)</option>
+      <option value="landolt-red-grey">Landolt C — red on equiluminant grey (4AFC ↑→↓←)</option>
       <option value="tumbling-e">Tumbling E — gap acuity (4AFC ↑→↓←)</option>
       <option value="gabor">Gabor patch — tilt discrimination (2AFC ↖↗)</option>
       <option value="glass">Glass patterns — spiral coherence (2AFC ↺↻)</option>
     </select>
   </div>
+  <div id="equilum-grey-row" style="display:none">
+    <label>Equiluminant grey level (0–255)</label>
+    <div class="rw">
+      <input type="number" id="equilum-grey" min="0" max="255" value="128">
+      <span style="font-size:11px;color:#bbb;margin-left:8px">from flicker test</span>
+    </div>
+  </div>
   <div>
-    <label>Viewing distance (cm)</label>
     <div class="rw">
       <input type="range" id="sld" min="20" max="100" value="35">
       <span class="mv" id="ld">35</span>

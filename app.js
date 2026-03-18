@@ -11,6 +11,7 @@ function floorSize(ppd){
   if(MODE==='glass') return 0.02;
   return Math.max(5/ppd,0.003);
 }
+
 function glassStartStep(){ return 0.25; }
 function pick(a){return a[Math.floor(Math.random()*a.length)];}
 function calcPPD(){return(+document.getElementById('inpx').value/+document.getElementById('slw').value)*(+document.getElementById('sld').value*Math.PI/180);}
@@ -42,8 +43,24 @@ function calcActive(ppd){
 // Glass: white field, white dots → high contrast black dots on white.
 // C / E: white field, black ink.
 var BG = '#ffffff';   // must match #area background in CSS
+var EQUILUM_GREY = 128; // equiluminant grey level (0-255), set by user via flicker test
 
-function drawC(canvas, sizeDeg, gi) {
+// Helper: is the current mode a Landolt-C variant?
+function isLandoltMode(m){ return m==='landolt'||m==='landolt-red-white'||m==='landolt-red-black'||m==='landolt-red-grey'; }
+// Helper: get stimulus fg/bg colours for current mode
+function stimColors(m){
+  if(m==='landolt-red-black') return {fg:'#ff0000', bg:'#000000'};
+  if(m==='landolt-red-white') return {fg:'#ff0000', bg:'#ffffff'};
+  if(m==='landolt-red-grey'){
+    var v=EQUILUM_GREY.toString(16).padStart(2,'0');
+    return {fg:'#ff0000', bg:'#'+v+v+v};
+  }
+  return {fg:'#000000', bg:'#ffffff'};   // classic landolt / others
+}
+
+function drawC(canvas, sizeDeg, gi, fgColor, bgColor) {
+  fgColor = fgColor || '#000000';
+  bgColor = bgColor || BG;
   var dpr = window.devicePixelRatio || 1, sp = sizeDeg * PPD;
   var sw = Math.max(0.5, sp / 5);
   var R = Math.max(sw * 2, (sp - sw) / 2);
@@ -52,19 +69,19 @@ function drawC(canvas, sizeDeg, gi) {
   var off = document.createElement('canvas');
   off.width = off.height = od;
   var o = off.getContext('2d');
-  o.fillStyle = BG;
+  o.fillStyle = bgColor;
   o.fillRect(0, 0, od, od);
 
   var cx = od / 2, cy = od / 2, swS = sw * SC, RS = R * SC;
 
-  o.strokeStyle = '#000'; o.lineWidth = swS;
+  o.strokeStyle = fgColor; o.lineWidth = swS;
   o.beginPath(); o.arc(cx, cy, RS, 0, Math.PI * 2); o.stroke();
 
   var angles = [1.5 * Math.PI, 0, 0.5 * Math.PI, Math.PI];
   o.save();
   o.translate(cx, cy);
   o.rotate(angles[gi]);
-  o.fillStyle = BG;
+  o.fillStyle = bgColor;
   o.fillRect(0, -swS / 2, RS + swS / 2 + 1, swS); 
   o.restore();
 
@@ -309,7 +326,15 @@ function fitMag(eccs,thrs){
   var outliers=rs2.map(function(r){return r>2.5*mad2;});
   return{k1:k1,k2:k2,r2:r2,fitted:fitted,outliers:outliers};
 }
-function showScreen(id){document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('on');});document.getElementById(id).classList.add('on');}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('on');});
+  document.getElementById(id).classList.add('on');
+  // restore white area background when leaving trial screen
+  if(id!=='trial'){
+    var areaEl=document.getElementById('area');
+    if(areaEl) areaEl.style.background='';
+  }
+}
 var _sc,_stEl,_pfill;
 function getEls(){if(!_sc){_sc=document.getElementById('sc');_stEl=document.getElementById('st');_pfill=document.getElementById('pfill');}}
 function setStatus(t){getEls();_stEl.textContent=t;}
@@ -336,7 +361,7 @@ function updateButtons(mode){
     document.getElementById('bleft').textContent= mode==='glass'?'↺':'↖';
     document.getElementById('bright').textContent=mode==='glass'?'↻':'↗';
   } else {
-    // landolt + tumbling-e: all four arrows
+    // landolt + red-C variants + tumbling-e: all four arrows
     bu.style.visibility='visible';bd.style.visibility='visible';
     document.getElementById('bleft').textContent='←';
     document.getElementById('bright').textContent='→';
@@ -354,7 +379,13 @@ function flashTrial(sizeDeg,eccDeg,callback){
   } else if(MODE==='tumbling-e'){
     gd=pick(GDIRS);drawE(_sc,sizeDeg,gd);
   } else {
-    gd=pick(GDIRS);drawC(_sc,sizeDeg,gd);
+    // landolt and all red-C variants
+    gd=pick(GDIRS);
+    var sc=stimColors(MODE);
+    drawC(_sc,sizeDeg,gd,sc.fg,sc.bg);
+    // set #area background to match stimulus background
+    var areaEl=document.getElementById('area');
+    areaEl.style.background=sc.bg;
   }
   eng.gd=gd;eng.pos=pos;eng.acc=false;eng.onR=callback;eng.stimOn=null;eng.eccDeg=eccDeg;eng.sizeDeg=sizeDeg;eng.lastResp=null;eng.lastRT=null;
   function tryPlace(){
@@ -437,6 +468,11 @@ function runPractice(){var trial=0;function next(){if(trial>=NP){runAll(0);retur
 function startTask(){
   PPD=calcPPD();
   MODE=document.getElementById('selmode').value;
+  // read equiluminant grey value when relevant
+  if(MODE==='landolt-red-grey'){
+    var greyVal=parseInt(document.getElementById('equilum-grey').value,10);
+    EQUILUM_GREY=(!isNaN(greyVal)&&greyVal>=0&&greyVal<=255)?greyVal:128;
+  }
   getEls();
   showScreen('trial');
   sizeBtns();
@@ -507,7 +543,7 @@ function showResults(){getEls();_sc.style.visibility='hidden';showScreen('result
   var fit=fitMag(ve,vt),k1=fit.k1,k2=fit.k2,r2=fit.r2,fitted=fit.fitted||[],outliers=fit.outliers||[];
   if(MODE==='landolt'&&k2) eng.landoltK2=k2;
   var k2b=k2&&(k2<0.05||k2>5),k1b=k1&&(k1<4||k1>100),r2b=r2!=null&&r2<0.85;
-  var modeLabel=MODE==='gabor'?'Gabor — orientation':MODE==='glass'?'Glass patterns — spiral coherence':MODE==='tumbling-e'?'Tumbling E — gap acuity':'Landolt C — gap acuity';
+  var modeLabel=MODE==='gabor'?'Gabor — orientation':MODE==='glass'?'Glass patterns — spiral coherence':MODE==='tumbling-e'?'Tumbling E — gap acuity':MODE==='landolt-red-white'?'Landolt C — red on white':MODE==='landolt-red-black'?'Landolt C — red on black':MODE==='landolt-red-grey'?'Landolt C — red on equiluminant grey':'Landolt C — gap acuity';
   document.getElementById('res-mode').textContent=modeLabel;
   // Threshold display: raw coherence in the grid; sensitivity in the chart
   var pg=document.getElementById('pgrid');pg.innerHTML='';
@@ -615,6 +651,10 @@ window.addEventListener('load',function(){
   updateGeo();
 });
 ['sld','slw','inpx'].forEach(function(id){document.getElementById(id).addEventListener('input',updateGeo);});
+document.getElementById('selmode').addEventListener('change',function(){
+  var greyRow=document.getElementById('equilum-grey-row');
+  if(greyRow) greyRow.style.display=(this.value==='landolt-red-grey')?'':'none';
+});
 document.getElementById('bbeg').addEventListener('click',startTask);
 document.getElementById('bres').addEventListener('click',function(){showScreen('setup');updateGeo();});
 document.getElementById('bexp').addEventListener('click',exportCSV);
